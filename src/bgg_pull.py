@@ -17,11 +17,9 @@ import json
 
 '''
 This module supports grabbing information from the board game geek website (https://boardgamegeek.com/),
-output is a csv file.  I couldn't find a way to get games by rank through the api, so I scrape the game ranks
-then use the api to get more details on each game.  The frist step is scraping, once the first 5K games are
-grabbed and saved out, user can call get from api to fill out all details
+output is a csv file.
 
-- call ScrapeRanks, this should take a while (~10 min) and gets the urls and rank of all games from the site
+- Unscrape to initialize for downloading all games.  It takes an argument of the current number of games, which you can see in the Browse menu at BGG.  To test your setup use a much smaller number.
 - call GetFromApi, this should also take a while (~10 min) and gets the remaining information through API calls
 '''
 
@@ -40,6 +38,7 @@ tag_col_lookup = [('name', 'names'),
                  ('statistics/ratings/average', 'avg_rating'),
                  ('statistics/ratings/bayesaverage', 'geek_rating'),
                  ('statistics/ratings/usersrated', 'num_votes'),
+                 ('statistics/ratings/ranks/rank', 'rank'),
                  ('image', 'image_url'),
                  ('thumbnail', 'thumb_url'),
                  ('age', 'age'),
@@ -50,66 +49,39 @@ tag_col_lookup = [('name', 'names'),
                  ('boardgamepublisher', 'publisher'),
                  ('statistics/ratings/averageweight', 'weight')]
 
+full_col_list = ['game_id','bgg_url']
+for tag, col in tag_col_lookup:
+    full_col_list.append(col)
 
-def ScrapeRanks(page_start=1, page_end=51, tags_cols=tag_col_lookup):
+current = 1
+
+def GetFromApi(max=271300, loops=100, tags_cols=tag_col_lookup):
     '''
-    :param page_start: which page to start grabbing data from (1 is first page)
-    :param page_end: which page to stop grabbing data from (not inclusive, 51 should be the stop point)
-    :param tags_cols: uses the column names to build dataframe
-    :param output_name: which name to use for CSV, GetFromApi is expecting bgg_db.csv as a default
-    '''
-    game_id, rank_list, bgg_url = [], [], []
-    for index in range(page_start, page_end):
-        args.logger.info(f'Grabbing page {index}')
-        url = "https://boardgamegeek.com/search/boardgame/page/{}?sort=rank&advsearch=1&q=&include%5Bdesignerid%5D=&include" \
-              "%5Bpublisherid%5D=&geekitemname=&range%5Byearpublished%5D%5Bmin%5D=&range%5Byearpublished%5D%5Bmax%5D=&range%5B" \
-              "minage%5D%5Bmax%5D=&range%5Bnumvoters%5D%5Bmin%5D=&range%5Bnumweights%5D%5Bmin%5D=&range%5Bminplayers%5D%5Bmax%" \
-              "5D=&range%5Bmaxplayers%5D%5Bmin%5D=&range%5Bleastplaytime%5D%5Bmin%5D=&range%5Bplaytime%5D%5Bmax%5D=&floatrange%" \
-              "5Bavgrating%5D%5Bmin%5D=&floatrange%5Bavgrating%5D%5Bmax%5D=&floatrange%5Bavgweight%5D%5Bmin%5D=&floatrange%" \
-              "5Bavgweight%5D%5Bmax%5D=&colfiltertype=&playerrangetype=normal&B1=Submit&sortdir=asc".format(index)
-        req = requests.get(url)
-        soup = bs4.BeautifulSoup(req.text, "html.parser")
-        for iter in range(1, 101):
-            soup_iter = "results_objectname{}".format(iter)
-            url = soup.find_all("div", id=soup_iter)
-            for sub_url in url:
-                for tag in sub_url:
-                    if 'a' == tag.name:
-                        bgg_url.append("https://boardgamegeek.com{}".format(tag["href"]))
-                        game_id.append(bgg_url[-1].split('/')[4])
-        ranks = soup.find_all("td", class_="collection_rank")
-        for rank in ranks:
-            tempo = rank.get_text().strip('\n\t ')
-            rank_list.append(tempo)
-        time.sleep(5)
-
-    str_names = ['names', 'image_url', 'thumb_url', 'mechanic', 'category', 'designer', 'publisher']
-    df_dict = {'bgg_url':bgg_url, 'game_id':game_id}
-    df = pandas.DataFrame(df_dict, index=rank_list).rename_axis('rank')
-    for tag, col in tags_cols:
-        df[col] = 'x' if col in str_names else np.nan
-    path = os.path.join(args.out_path, args.out_name)
-    df.to_csv(path)
-
-
-def GetFromApi(loops=100, tags_cols=tag_col_lookup):
-    '''
-    :param loops: how many games to try and grab, advised to do 100, 50 times
-    https://www.boardgamegeek.com/xmlapi
+    :param max: the maximum index to try and grab; at time of writing was around 271280 (actual board game count 104599); lower it to test
+    :param loops: how many games to try and grab at once: 100 is a good number
     :param tags_cols: 
     :param name_in: 
     :param name_out: 
     '''
 
+    global current
     path = os.path.join(args.out_path, args.out_name)
-    df = pandas.read_csv(path, encoding='utf8')
-    # search through df for null entries, add these to batch list
+    df = pandas.DataFrame([], columns = full_col_list)
+    if os.path.isfile(path):
+        # search through df for max game id and start from there.
+        df = pandas.read_csv(path, encoding='utf8', float_precision='high')
+        if int(df.iloc[-1,0]) >= current:
+            current = int(df.iloc[-1,0]) + 1
+ 
     ids_todo = []
-    for index, row in df.iterrows():
+    for index in range(current,current + loops):
         if len(ids_todo) >= loops:
             break
-        if np.isnan(row['min_players']):
-            ids_todo.append(str(row['game_id']))
+        if index <= max:
+            ids_todo.append(str(index))
+
+    current = current + loops
+
     url = 'https://www.boardgamegeek.com/xmlapi/boardgame/{}?&stats=1&marketplace=1'.format(','.join(ids_todo))
     args.logger.info(f'Grabbing info from {url}')
     response = requests.get(url)
@@ -120,65 +92,55 @@ def GetFromApi(loops=100, tags_cols=tag_col_lookup):
     # these tags will return multiple results, will need to be handled slightly differently
     multi_tags = ['mechanic', 'category', 'designer']
     tree = ElementTree.fromstring(response.content)
-    args.logger.info('Inserting games')
     for game in tree:
-        id = game.attrib['objectid']
-        df_index = df[df['game_id'] == int(id)].index
-        for tag, var in tags_cols:
-            # special case for grabbing english name
-            if var == 'names':
-                for sub in game.findall(tag):
-                    if 'primary' in sub.attrib: #grab the english name
-                        df.set_value(df_index, var, sub.text if sub != None else 'none')
-                        break
-            # multi tag items need to be handled slightly different
-            elif var in multi_tags:
-                multi = []
-                for sub in game.findall(tag):
-                    multi.append(sub.text if sub != None else 'none')
-                df.set_value(df_index, var, ', '.join(multi) if len(multi) else 'none')
-            # all normal nodes handled here
-            else:
-                node = game.find(tag)
-                df.set_value(df_index, var, node.text if node != None else 'none')
+        if 'objectid' in game.attrib and not 'subtypemismatch' in game.attrib:
+            id = game.attrib['objectid']
+            df_dict = {'game_id':id, 'bgg_url':"https://boardgamegeek.com/boardgame/" + str(id)}
+            for tag, var in tags_cols:
+                # special case for grabbing english name
+                if var == 'names':
+                    for sub in game.findall(tag):
+                        if 'primary' in sub.attrib: #grab the english name
+                            df_dict[var] = sub.text if sub != None else 'none'
+                            break
+                # special case for grabbing rank (when not scraping)
+                elif var == 'rank':
+                    for sub in game.findall(tag):
+                        if 'id' in sub.attrib and sub.attrib["id"] == '1': #grab the rank
+                            df_dict[var] = sub.attrib["value"] if sub != None and sub.attrib["value"] != 'Not Ranked' else 'none'
+                            break
+                # multi tag items need to be handled slightly different
+                elif var in multi_tags:
+                    multi = []
+                    for sub in game.findall(tag):
+                        multi.append(sub.text if sub != None else 'none')
+                        df_dict[var] = ', '.join(multi) if len(multi) else 'none'
+                # all normal nodes handled here
+                else:
+                    node = game.find(tag)
+                    df_dict[var] = node.text if node != None else 'none'
 
+            df = df.append(df_dict, ignore_index = True)
+
+        else:
+            # check for a game not found error (vs. some other error)
+            for sub in game.findall('error'):
+                args.logger.info(sub)
+                if 'message' in sub.attrib:
+                    args.logger.info( sub.attrib["message"] )
+                else:
+                    args.logger.info('The server returned an error.')
+                    
     # save results out
+    args.logger.info('Saving...')
     path = os.path.join(args.out_path, args.out_name)
     df.to_csv(path, index=False)
 
 
-def VizIt(args):
-    """ This function generates a viz using pictures of top rated board games
-    
-    Arguments:
-        args -- command line arguments
-    """
-    path = os.path.join(args.out_path, args.out_name)
-    df = pandas.read_csv(path)
-    df = df.loc[:args.n_total, 'thumb_url']
-
-    _x, _y = 0, 0
-    new_im = Image.new('RGB', (args.out_width, args.out_height))
-    for index, item in enumerate(df):
-        pic_req = requests.get(item)
-        im = Image.open(BytesIO(pic_req.content))
-        pic_w, pic_h = im.size
-        new_im.paste(im, (_x, _y))
-        _x += pic_w + 10
-        if index % args.n_cols == 0 and index > 0:
-            _y += args.thumb_w
-            _x = 0
-        time.sleep(5)
-
-    path = os.path.join(args.out_path, args.viz_name)
-    new_im.save(path)
-
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Collects information for the top 5K games on BGG')
-    parser.add_argument('-s', '--scrape', dest='do_scrape', action='store_true', help='Specify if you want to scrape')
-    parser.add_argument('-a', '--api', dest='api_grabs', type=int, default=0, help='how many groups of 100 to grab, keep doing this until db full')
-    parser.add_argument('-v', '--viz', dest='do_viz', action='store_true', help='Specify if you want to generate viz')
+    parser = argparse.ArgumentParser(description='Collects information for games on BGG')
+    parser.add_argument('-a', '--api', dest='api_grabs', type=int, default=50, help='how many groups of 100 to grab, keep doing this until db full')
     args = parser.parse_args()
 
     # add extra useful stuff
@@ -193,7 +155,6 @@ if __name__ == '__main__':
     args.out_width = args.n_cols * args.thumb_w
     args.out_height = args.n_rows * args.thumb_h
     args.out_name = args.config['out_name']
-    args.viz_name = args.config['viz_name']
     args.log_path = args.config['log_path']
     args.out_path = args.config['out_path']
 
@@ -216,19 +177,12 @@ if __name__ == '__main__':
     args.logger.info(f'{sep}\npython {arg_str}\n')
 
     # validate input
-    if not 0 <= args.api_grabs <= 50:
+    if not 0 <= args.api_grabs <= 500:
         args.logger.error('invalid value for api_grabs [0, 50]')
         sys.exit(1)
-
-    if args.do_scrape:
-        args.logger.info('Begining scrape')
-        ScrapeRanks()
     
     for i in range(args.api_grabs):
         args.logger.info(f'Api grab {i}')
         GetFromApi()
         time.sleep(5)
 
-    if args.do_viz:
-        args.logger.info('Generating viz')
-        VizIt(args)
