@@ -140,20 +140,13 @@ def GetFromApi(max=271300, loops=100, tags_cols=tag_col_lookup):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Collects information for games on BGG')
-    parser.add_argument('-a', '--api', dest='api_grabs', type=int, default=50, help='how many groups of 100 to grab, keep doing this until db full')
+    parser.add_argument('-a', '--api', dest='api_grab', type=int, default=271300, help='Maximum game id to grab, keep doing this until db full')
     args = parser.parse_args()
 
     # add extra useful stuff
     args.cfgpath = "../config.json"
     with open(args.cfgpath, 'r') as file:
         args.config = json.load(file)
-    args.thumb_w = args.config['thumb_w']
-    args.thumb_h = args.config['thumb_h']
-    args.n_rows = args.config['n_rows']
-    args.n_cols = args.config['n_cols']
-    args.n_total = args.n_rows * args.n_cols
-    args.out_width = args.n_cols * args.thumb_w
-    args.out_height = args.n_rows * args.thumb_h
     args.out_name = args.config['out_name']
     args.log_path = args.config['log_path']
     args.out_path = args.config['out_path']
@@ -177,12 +170,12 @@ if __name__ == '__main__':
     args.logger.info(f'{sep}\npython {arg_str}\n')
 
     # validate input
-    if not 0 <= args.api_grabs <= 500:
-        args.logger.error('invalid value for api_grabs [0, 50]')
+    if not 1 <= args.api_grab <= 500000:
+        args.logger.error('invalid value for api_grabs [1, 500000]')
         sys.exit(1)
     
-    for i in range(args.api_grabs):
-        args.logger.info(f'Api grab {i}')
-        GetFromApi()
+    while current < args.api_grab:
+        args.logger.info('Calling API...')
+        GetFromApi(args.api_grab)
         time.sleep(5)
 
