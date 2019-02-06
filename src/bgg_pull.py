@@ -26,7 +26,7 @@ grabbed and saved out, user can call get from api to fill out all details
 '''
 
 
-# for whatever reason this game has no rank and is missing data, could add code to delete, or whack manually
+# this is an RPG that's somehow ending up in the results; manual solution is to whack it and grab another row
 # https://boardgamegeek.com/boardgame/57161/showdown
 
 # for easy lookup later we can pair the xml tags with the respective dataframe columns
@@ -61,12 +61,8 @@ def ScrapeRanks(page_start=1, page_end=51, tags_cols=tag_col_lookup):
     game_id, rank_list, bgg_url = [], [], []
     for index in range(page_start, page_end):
         args.logger.info(f'Grabbing page {index}')
-        url = "https://boardgamegeek.com/search/boardgame/page/{}?sort=rank&advsearch=1&q=&include%5Bdesignerid%5D=&include" \
-              "%5Bpublisherid%5D=&geekitemname=&range%5Byearpublished%5D%5Bmin%5D=&range%5Byearpublished%5D%5Bmax%5D=&range%5B" \
-              "minage%5D%5Bmax%5D=&range%5Bnumvoters%5D%5Bmin%5D=&range%5Bnumweights%5D%5Bmin%5D=&range%5Bminplayers%5D%5Bmax%" \
-              "5D=&range%5Bmaxplayers%5D%5Bmin%5D=&range%5Bleastplaytime%5D%5Bmin%5D=&range%5Bplaytime%5D%5Bmax%5D=&floatrange%" \
-              "5Bavgrating%5D%5Bmin%5D=&floatrange%5Bavgrating%5D%5Bmax%5D=&floatrange%5Bavgweight%5D%5Bmin%5D=&floatrange%" \
-              "5Bavgweight%5D%5Bmax%5D=&colfiltertype=&playerrangetype=normal&B1=Submit&sortdir=asc".format(index)
+        #changed the url to one that won't return the spurious rpg game (noted above) and can go above 5000.
+        url = "https://boardgamegeek.com/browse/boardgame/page/{}".format(index)
         req = requests.get(url)
         soup = bs4.BeautifulSoup(req.text, "html.parser")
         for iter in range(1, 101):
@@ -90,6 +86,44 @@ def ScrapeRanks(page_start=1, page_end=51, tags_cols=tag_col_lookup):
         df[col] = 'x' if col in str_names else np.nan
     path = os.path.join(args.out_path, args.out_name)
     df.to_csv(path)
+
+def GetFans(loops=100):
+    '''
+    :param name_in: 
+    :param name_out: 
+    '''
+
+    path = os.path.join(args.out_path, args.out_name)
+    df = pandas.read_csv(path, encoding='utf8', float_precision='high')
+    # check df for fan column; add it if it's not there.
+    if 'numfans' not in df.columns:
+        df["numfans"] = np.nan
+    else:
+        ids_todo = []
+        for index, row in df.iterrows():
+            if len(ids_todo) >= loops:
+                break
+            if pandas.isna(row['numfans']):
+                ids_todo.append(str(row['game_id']))
+                
+        for id in ids_todo:
+            url = f'https://api.geekdo.com/api/fans?objectid={id}&objecttype=thing'
+            args.logger.info(f'Grabbing info from {url}')
+            response = requests.get(url)
+            if response.status_code != 200:
+                args.logger.error(f'Problem grabbing from API:  {response.status_code}')
+            else:
+                json_data = json.loads(response.text)
+                df_index = df[df['game_id'] == int(id)].index
+                df.at[df_index, 'numfans'] = json_data['numfans'];
+            time.sleep(2)
+
+        if ids_todo == []:
+            #We're done and can cast the column to int.
+            df['numfans'] = df['numfans'].astype(int)
+
+    # save results out
+    df.to_csv(path, index=False)
 
 
 def GetFromApi(loops=100, tags_cols=tag_col_lookup):
@@ -178,6 +212,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Collects information for the top 5K games on BGG')
     parser.add_argument('-s', '--scrape', dest='do_scrape', action='store_true', help='Specify if you want to scrape')
     parser.add_argument('-a', '--api', dest='api_grabs', type=int, default=0, help='how many groups of 100 to grab, keep doing this until db full')
+    parser.add_argument('-f', '--fans', dest='fan_grabs', type=int, default=0, help='how many times to grab 100 fans')
     parser.add_argument('-v', '--viz', dest='do_viz', action='store_true', help='Specify if you want to generate viz')
     args = parser.parse_args()
 
@@ -220,6 +255,10 @@ if __name__ == '__main__':
         args.logger.error('invalid value for api_grabs [0, 50]')
         sys.exit(1)
 
+    if not 0 <= args.fan_grabs <= 100:
+        args.logger.error('invalid value for fan_grabs [0, 50]')
+        sys.exit(1)
+
     if args.do_scrape:
         args.logger.info('Begining scrape')
         ScrapeRanks()
@@ -228,6 +267,11 @@ if __name__ == '__main__':
         args.logger.info(f'Api grab {i}')
         GetFromApi()
         time.sleep(5)
+
+    for i in range(args.fan_grabs):
+        args.logger.info(f'JSON api grab {i}')
+        GetFans()
+        time.sleep(2)
 
     if args.do_viz:
         args.logger.info('Generating viz')
