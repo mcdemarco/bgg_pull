@@ -21,20 +21,22 @@ A separate process has been added to retrieve fan counts.
 
 ### Example
 
-Using pip3, install any missing requirements.
+Using pip3, install any missing requirements.  (You'll see them when you try to run.)
 
-From the command line in the src directory, use the following argument; the output of this is a dataframe, converted to csv.
+From the command line in the src directory type:
 
 	python3 bgg_pull.py -s
 	python3 bgg_pull.py -a 50
 	python3 bgg_pull.py -f 51
+
+The third call is optional.  Your `python3` may be called `python` instead.
 
 ## Issues
 
 Some game names are saved without quotes but with octothorpes (#) in their names (mostly Advanced Squad Leader);
 you may need to quote the names manually to load the data into, say, R.
 
-Some columns may end up as unexpected floats, especially during retrieval but possibly afterwards as well.
+Some columns may end up as unexpected floats, especially during retrieval but possibly after you're done as well.
 
 ## Credits
 
