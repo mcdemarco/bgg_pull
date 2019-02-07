@@ -61,8 +61,13 @@ def ScrapeRanks(page_start=1, page_end=51, tags_cols=tag_col_lookup):
     game_id, rank_list, bgg_url = [], [], []
     for index in range(page_start, page_end):
         args.logger.info(f'Grabbing page {index}')
-        #changed the url to one that won't return the spurious rpg game (noted above) and can go above 5000.
-        url = "https://boardgamegeek.com/browse/boardgame/page/{}".format(index)
+        #changed the url to one that won't return the spurious rpg game (noted above) by requiring min voters.
+        url = "https://boardgamegeek.com/search/boardgame/page/{}?sort=rank&advsearch=1&q=&include%5Bdesignerid%5D=&include" \
+              "%5Bpublisherid%5D=&geekitemname=&range%5Byearpublished%5D%5Bmin%5D=&range%5Byearpublished%5D%5Bmax%5D=&range%5B" \
+              "minage%5D%5Bmax%5D=&range%5Bnumvoters%5D%5Bmin%5D=25&range%5Bnumweights%5D%5Bmin%5D=&range%5Bminplayers%5D%5Bmax%" \
+              "5D=&range%5Bmaxplayers%5D%5Bmin%5D=&range%5Bleastplaytime%5D%5Bmin%5D=&range%5Bplaytime%5D%5Bmax%5D=&floatrange%" \
+              "5Bavgrating%5D%5Bmin%5D=&floatrange%5Bavgrating%5D%5Bmax%5D=&floatrange%5Bavgweight%5D%5Bmin%5D=&floatrange%" \
+              "5Bavgweight%5D%5Bmax%5D=&colfiltertype=&playerrangetype=normal&B1=Submit&sortdir=asc".format(index)
         req = requests.get(url)
         soup = bs4.BeautifulSoup(req.text, "html.parser")
         for iter in range(1, 101):
@@ -260,7 +265,7 @@ if __name__ == '__main__':
         sys.exit(1)
 
     if args.do_scrape:
-        args.logger.info('Begining scrape')
+        args.logger.info('Beginning scrape')
         ScrapeRanks()
     
     for i in range(args.api_grabs):
