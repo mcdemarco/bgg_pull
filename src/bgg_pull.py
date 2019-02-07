@@ -48,7 +48,9 @@ tag_col_lookup = [('name', 'names'),
                  ('boardgamecategory', 'category'),
                  ('boardgamedesigner', 'designer'),
                  ('boardgamepublisher', 'publisher'),
-                 ('statistics/ratings/averageweight', 'weight')]
+                 ('statistics/ratings/averageweight', 'weight'),
+                 ('boardgameexpansion', 'expands'),
+                 ('boardgameimplementation', 'reimplements')]
 
 
 def ScrapeRanks(page_start=1, page_end=51, tags_cols=tag_col_lookup):
@@ -169,6 +171,18 @@ def GetFromApi(loops=100, tags_cols=tag_col_lookup):
                 for sub in game.findall(tag):
                     if 'primary' in sub.attrib: #grab the english name
                         df.set_value(df_index, var, sub.text if sub != None else 'none')
+                        break
+            # special case for expansions
+            elif var == 'expands':
+                for sub in game.findall(tag):
+                    if 'inbound' in sub.attrib: #grab the game
+                        df.set_value(df_index, var, sub.attrib["objectid"] if sub != None else 'none')
+                        break
+            # special case for reimplementations
+            elif var == 'reimplements':
+                for sub in game.findall(tag):
+                    if 'inbound' in sub.attrib: #grab the game
+                        df.set_value(df_index, var, sub.attrib["objectid"] if sub != None else 'none')
                         break
             # multi tag items need to be handled slightly different
             elif var in multi_tags:
